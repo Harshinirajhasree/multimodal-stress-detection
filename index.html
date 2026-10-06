@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Stress Detection Dashboard</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#f1f5f9;
+margin:0;
+padding:20px;
+}
+
+h1{
+text-align:center;
+margin-bottom:20px;
+}
+
+.container{
+display:grid;
+grid-template-columns:1fr 1fr 1fr;
+gap:15px;
+}
+
+.card{
+background:white;
+padding:15px;
+border-radius:10px;
+box-shadow:0 2px 6px rgba(0,0,0,0.1);
+}
+
+input,select{
+width:100%;
+padding:8px;
+margin-top:5px;
+margin-bottom:10px;
+}
+
+button{
+width:100%;
+padding:12px;
+margin-top:8px;
+border:none;
+color:white;
+font-size:16px;
+cursor:pointer;
+border-radius:5px;
+}
+
+.connect{background:#2563eb;}
+.start{background:#16a34a;}
+.stop{background:#4b5563;}
+.download{background:#ea580c;}
+
+.statusBox{
+padding:12px;
+border-radius:5px;
+text-align:center;
+font-weight:bold;
+background:#bbf7d0;
+}
+
+.live{
+margin-top:20px;
+background:white;
+padding:15px;
+border-radius:10px;
+box-shadow:0 2px 6px rgba(0,0,0,0.1);
+font-size:18px;
+}
+
+.chartBox{
+margin-top:20px;
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:15px;
+}
+
+canvas{
+background:white;
+border-radius:10px;
+padding:10px;
+box-shadow:0 2px 6px rgba(0,0,0,0.1);
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>Multimodal Stress Detection Dashboard</h1>
+
+<div class="container">
+
+<div class="card">
+
+<h2>Patient Info</h2>
+
+<label>Name</label>
+<input id="name">
+
+<label>Person ID</label>
+<input id="pid" value="P1">
+
+<label>Label</label>
+<select id="label">
+<option value="0">0 - Normal</option>
+<option value="1">1 - Stress</option>
+</select>
+
+<label>Self Stress</label>
+<select id="selfStress">
+<option>No</option>
+<option>Yes</option>
+</select>
+
+<label>Fatigue</label>
+<select id="fatigue">
+<option>Low</option>
+<option>Medium</option>
+<option>High</option>
+</select>
+
+</div>
+
+<div class="card">
+
+<h2>Controls</h2>
+
+<button class="connect" onclick="connectESP()">Connect ESP32 WiFi</button>
+
+<button class="start" onclick="startLog()">Start</button>
+
+<button class="stop" onclick="stopLog()">Stop</button>
+
+<button class="download" onclick="downloadCSV()">Download CSV</button>
+
+<h3>Status: <span id="status">Idle</span></h3>
+
+<h3>Mode: WiFi</h3>
+
+<h3>Time: <span id="timer">0s</span></h3>
+
+</div>
+
+<div class="card">
+
+<h2>Stress Status</h2>
+
+<div class="statusBox" id="stressBox">
+Normal
+</div>
+
+<h3 id="tremor">Stable</h3>
+
+<h3 id="score">Stress Score: 0%</h3>
+
+</div>
+
+</div>
+
+<div class="live">
+
+<h2>Live Data</h2>
+
+<p id="live">--</p>
+
+</div>
+
+<div class="chartBox">
+
+<canvas id="bpmCanvas" width="500" height="250"></canvas>
+
+<canvas id="gsrCanvas" width="500" height="250"></canvas>
+
+</div>
+
+<script>
+
+let ip="192.168.4.1";
+
+let isLogging=false;
+
+let dataLog=[];
+
+let startTime=0;
+
+let bpmData=[];
+let gsrData=[];
+
+let bpmCtx=document.getElementById("bpmCanvas").getContext("2d");
+let gsrCtx=document.getElementById("gsrCanvas").getContext("2d");
+
+async function connectESP(){
+
+document.getElementById("status").innerText="Connecting...";
+
+try{
+
+let response=await fetch(`http://${ip}/data`);
+
+let data=await response.json();
+
+document.getElementById("status").innerText="Connected";
+
+fetchLoop();
+
+}
+catch(e){
+
+document.getElementById("status").innerText="ESP32 Not Reachable";
+
+console.log(e);
+
+}
+
+}
+
+async function fetchLoop(){
+
+setInterval(async()=>{
+
+try{
+
+let response=await fetch(`http://${ip}/data`);
+
+let d=await response.json();
+
+updateUI(d);
+
+}
+catch(e){
+
+console.log(e);
+
+}
+
+},500);
+
+}
+
+function updateUI(d){
+
+document.getElementById("live").innerText=
+
+`BPM: ${d.bpm.toFixed(1)} | GSR: ${d.gsr} | Temp: ${d.temp.toFixed(1)} °C | Motion: ${d.motion.toFixed(2)} | Ax:${d.ax.toFixed(2)} Ay:${d.ay.toFixed(2)} Az:${d.az.toFixed(2)}`;
+
+let score=((d.bpm/120)+(d.gsr/1000))*50;
+
+if(score>100) score=100;
+
+document.getElementById("score").innerText=
+"Stress Score: "+score.toFixed(1)+"%";
+
+if(d.bpm>100 || d.gsr>700){
+
+document.getElementById("stressBox").innerText="Stress";
+
+document.getElementById("stressBox").style.background="#fecaca";
+
+}
+else{
+
+document.getElementById("stressBox").innerText="Normal";
+
+document.getElementById("stressBox").style.background="#bbf7d0";
+
+}
+
+if(d.motion>1.2){
+
+document.getElementById("tremor").innerText=
+"Tremor Detected ⚠";
+
+}
+else{
+
+document.getElementById("tremor").innerText=
+"Stable";
+
+}
+
+bpmData.push(d.bpm);
+gsrData.push(d.gsr);
+
+if(bpmData.length>30) bpmData.shift();
+if(gsrData.length>30) gsrData.shift();
+
+drawChart(bpmCtx,bpmData,"green","BPM");
+drawChart(gsrCtx,gsrData,"blue","GSR");
+
+if(isLogging){
+
+dataLog.push({
+time:new Date().toISOString(),
+name:document.getElementById("name").value,
+person_id:document.getElementById("pid").value,
+label:document.getElementById("label").value,
+self_stress:document.getElementById("selfStress").value,
+fatigue:document.getElementById("fatigue").value,
+
+bpm:d.bpm,
+gsr:d.gsr,
+temp:d.temp,
+emg:d.emg || 0,
+
+motion:d.motion,
+ax:d.ax,
+ay:d.ay,
+az:d.az,
+
+stress_score:score.toFixed(1),
+stress_status:(d.bpm>100 || d.gsr>700) ? "HIGH" : "LOW"
+});
+}
+
+}
+
+function drawChart(ctx,data,color,label){
+
+ctx.clearRect(0,0,500,250);
+
+ctx.beginPath();
+
+ctx.strokeStyle=color;
+
+ctx.lineWidth=2;
+
+for(let i=0;i<data.length;i++){
+
+let x=i*15;
+
+let y=220-(data[i]/5);
+
+if(i===0) ctx.moveTo(x,y);
+else ctx.lineTo(x,y);
+
+}
+
+ctx.stroke();
+
+ctx.fillStyle="black";
+
+ctx.fillText(label,10,15);
+
+}
+
+function startLog(){
+
+isLogging=true;
+
+startTime=Date.now();
+
+document.getElementById("status").innerText="Logging";
+
+}
+
+function stopLog(){
+
+isLogging=false;
+
+document.getElementById("status").innerText="Stopped";
+
+}
+
+setInterval(()=>{
+
+if(isLogging){
+
+let sec=Math.floor((Date.now()-startTime)/1000);
+
+document.getElementById("timer").innerText=sec+"s";
+
+}
+
+},1000);
+
+function downloadCSV(){
+
+let csv=
+"time,name,person_id,label,self_stress,fatigue,bpm,gsr,temp,emg,motion,ax,ay,az,stress_score,stress_status\n";
+
+dataLog.forEach(r=>{
+
+csv+=`${r.time},${r.name},${r.person_id},${r.label},${r.self_stress},${r.fatigue},${r.bpm},${r.gsr},${r.temp},${r.emg},${r.motion},${r.ax},${r.ay},${r.az},${r.stress_score},${r.stress_status}\n`;
+
+});
+
+let blob=new Blob([csv],{type:"text/csv"});
+
+let a=document.createElement("a");
+
+a.href=URL.createObjectURL(blob);
+
+a.download="stress_data.csv";
+
+a.click();
+
+}
+
+</script>
+
+</body>
+</html>
