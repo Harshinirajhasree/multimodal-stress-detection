@@ -178,6 +178,12 @@ Normal
 <canvas id="gsrCanvas" width="500" height="250"></canvas>
 
 </div>
+<div class="card">
+    <h2>Muscle Activity</h2>
+    <h3 id="emgValue">EMG: 0</h3>
+    <h3 id="fatigue">Fatigue Indicator: 0%</h3>
+    <h3 id="fatigueStatus">Status: Low</h3>
+</div>
 
 <script>
 
@@ -242,12 +248,72 @@ console.log(e);
 },500);
 
 }
+let emgBaseline = null;
+let emgSamples = [];
 
+const BASELINE_SAMPLES = 20;
+
+function calculateFatigue(emg) {
+
+    // Collect initial resting EMG values
+    if (emgBaseline === null) {
+
+        emgSamples.push(emg);
+
+        if (emgSamples.length >= BASELINE_SAMPLES) {
+
+            let sum = 0;
+
+            for (let i = 0; i < emgSamples.length; i++) {
+                sum += emgSamples[i];
+            }
+
+            emgBaseline = sum / emgSamples.length;
+
+            console.log("EMG Baseline:", emgBaseline);
+        }
+
+        return 0;
+    }
+
+    // Difference from resting baseline
+    let deviation = Math.abs(emg - emgBaseline);
+
+    // Normalize relative to baseline
+    let fatigueIndex =
+        (deviation / Math.max(emgBaseline, 1)) * 100;
+
+    // Limit to 100%
+    fatigueIndex = Math.min(fatigueIndex, 100);
+
+    return fatigueIndex;
+}
 function updateUI(d){
 
 document.getElementById("live").innerText=
+`BPM: ${d.bpm.toFixed(1)} | GSR: ${d.gsr} | EMG: ${d.emg} | Temp: ${d.temp.toFixed(1)} °C | Motion: ${d.motion.toFixed(2)} | Ax:${d.ax.toFixed(2)} Ay:${d.ay.toFixed(2)} Az:${d.az.toFixed(2)}`;
 
-`BPM: ${d.bpm.toFixed(1)} | GSR: ${d.gsr} | Temp: ${d.temp.toFixed(1)} °C | Motion: ${d.motion.toFixed(2)} | Ax:${d.ax.toFixed(2)} Ay:${d.ay.toFixed(2)} Az:${d.az.toFixed(2)}`;
+document.getElementById("emgValue").textContent =
+    "EMG: " + (d.emg || 0);
+let fatigueIndex = calculateFatigue(Number(d.emg) || 0);
+
+document.getElementById("fatigue").textContent =
+    "Fatigue Indicator: " + fatigueIndex.toFixed(1) + "%";
+
+let fatigueStatus;
+
+if (fatigueIndex < 20) {
+    fatigueStatus = "Low";
+}
+else if (fatigueIndex < 50) {
+    fatigueStatus = "Moderate";
+}
+else {
+    fatigueStatus = "High";
+}
+
+document.getElementById("fatigueStatus").textContent =
+    "Status: " + fatigueStatus;
 
 let score=((d.bpm/120)+(d.gsr/1000))*50;
 
